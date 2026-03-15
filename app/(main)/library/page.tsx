@@ -3,8 +3,8 @@
 import { useState, useEffect } from 'react';
 import { useAuthStore } from '@/stores/auth-store';
 import Link from 'next/link';
-import { Library as LibraryIcon, Heart, ListMusic, Plus, LogIn, Music, Play } from 'lucide-react';
-import { formatDuration } from '@/lib/utils';
+import { Library as LibraryIcon, Heart, Plus, LogIn, Music, Play, Youtube, X, Loader2, ListMusic } from 'lucide-react';
+import { usePlayerStore } from '@/stores/player-store';
 
 interface Playlist {
   id: string;
@@ -13,15 +13,125 @@ interface Playlist {
   playlist_songs: { count: number }[];
 }
 
+interface ImportedPlaylist {
+  title: string;
+  thumbnail: string;
+  songCount: number;
+  songs: any[];
+}
+
+function ImportModal({ onClose, onPlay }: { onClose: () => void; onPlay: (songs: any[], title: string) => void }) {
+  const [url, setUrl] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<ImportedPlaylist | null>(null);
+  const [error, setError] = useState('');
+
+  const handleImport = async () => {
+    if (!url.trim()) return
+    setLoading(true)
+    setError('')
+    setResult(null)
+    try {
+      const res = await fetch(`/api/playlist-import?url=${encodeURIComponent(url.trim())}`)
+      const data = await res.json()
+      if (!res.ok) {
+        setError(data.error || 'Failed to import playlist')
+      } else {
+        setResult(data)
+      }
+    } catch {
+      setError('Something went wrong. Check the URL and try again.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+      <div className="bg-[#141414] border border-[rgba(255,255,255,0.08)] rounded-2xl w-full max-w-md shadow-2xl">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-[rgba(255,255,255,0.06)]">
+          <div className="flex items-center gap-2">
+            <Youtube className="w-5 h-5 text-red-500" />
+            <h2 className="text-white font-bold text-[16px]">Import YouTube Playlist</h2>
+          </div>
+          <button onClick={onClose} className="text-[#52525b] hover:text-white transition-colors">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="p-6 space-y-4">
+          {/* URL Input */}
+          <div>
+            <label className="text-[#a1a1aa] text-sm mb-2 block">Playlist URL</label>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleImport()}
+                placeholder="https://youtube.com/playlist?list=..."
+                className="flex-1 bg-[#0d0d0d] border border-[rgba(255,255,255,0.08)] rounded-xl px-4 py-2.5 text-white text-sm placeholder:text-[#52525b] focus:outline-none focus:border-[#2563eb] transition-colors"
+              />
+              <button
+                onClick={handleImport}
+                disabled={loading || !url.trim()}
+                className="px-4 py-2.5 bg-[#2563eb] text-white text-sm font-bold rounded-xl disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[#1d4ed8] transition-colors flex items-center gap-2"
+              >
+                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Import'}
+              </button>
+            </div>
+            <p className="text-[#52525b] text-xs mt-2">Paste any YouTube playlist link</p>
+          </div>
+
+          {/* Error */}
+          {error && (
+            <div className="bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 text-red-400 text-sm">
+              {error}
+            </div>
+          )}
+
+          {/* Result */}
+          {result && (
+            <div className="bg-[#0d0d0d] border border-[rgba(255,255,255,0.06)] rounded-xl p-4">
+              <div className="flex items-center gap-3 mb-4">
+                {result.thumbnail ? (
+                  <img src={result.thumbnail} alt={result.title} className="w-14 h-14 rounded-lg object-cover flex-shrink-0" />
+                ) : (
+                  <div className="w-14 h-14 rounded-lg bg-[#1a1a1a] flex items-center justify-center flex-shrink-0">
+                    <ListMusic className="w-6 h-6 text-[#52525b]" />
+                  </div>
+                )}
+                <div className="min-w-0">
+                  <p className="text-white font-bold text-sm truncate">{result.title}</p>
+                  <p className="text-[#a1a1aa] text-xs mt-0.5">{result.songCount} songs found</p>
+                </div>
+              </div>
+              <button
+                onClick={() => { onPlay(result.songs, result.title); onClose(); }}
+                className="w-full py-2.5 bg-[#2563eb] hover:bg-[#1d4ed8] text-white font-bold text-sm rounded-xl flex items-center justify-center gap-2 transition-colors"
+              >
+                <Play className="w-4 h-4" fill="white" />
+                Play All {result.songCount} Songs
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function LibraryPage() {
-  const { isAuthenticated, profile, user } = useAuthStore();
+  const { isAuthenticated } = useAuthStore();
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [showImport, setShowImport] = useState(false);
+  const { playSong } = usePlayerStore();
 
   useEffect(() => {
-    if (isAuthenticated) {
-      fetchPlaylists();
-    }
+    if (isAuthenticated) fetchPlaylists();
+    else setIsLoading(false);
   }, [isAuthenticated]);
 
   const fetchPlaylists = async () => {
@@ -36,13 +146,17 @@ export default function LibraryPage() {
     }
   };
 
+  const handlePlayImported = (songs: any[], title: string) => {
+    if (songs.length > 0) {
+      playSong(songs[0], songs);
+    }
+  };
+
   if (!isAuthenticated) {
     return (
       <div className="flex flex-col items-center justify-center py-32 animate-fade-in">
         <LibraryIcon className="w-16 h-16 text-[#52525b] mb-4 opacity-50" />
-        <h2 className="text-xl font-bold text-white mb-2">
-          Sign in to view your library
-        </h2>
+        <h2 className="text-xl font-bold text-white mb-2">Sign in to view your library</h2>
         <p className="text-sm text-[#71717a] mb-6 text-center max-w-sm">
           Create playlists, save songs, and build your personal music collection.
         </p>
@@ -58,80 +172,92 @@ export default function LibraryPage() {
   }
 
   return (
-    <div className="px-6 pt-6 pb-32 overflow-y-auto space-y-8 animate-fade-in">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <LibraryIcon className="w-8 h-8 text-[#2563eb]" />
-          <h1 className="text-3xl font-black text-white tracking-tight">Your Library</h1>
+    <>
+      {showImport && (
+        <ImportModal
+          onClose={() => setShowImport(false)}
+          onPlay={handlePlayImported}
+        />
+      )}
+
+      <div className="px-6 pt-6 pb-32 overflow-y-auto space-y-8 animate-fade-in">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <LibraryIcon className="w-8 h-8 text-[#2563eb]" />
+            <h1 className="text-3xl font-black text-white tracking-tight">Your Library</h1>
+          </div>
+          {/* Import from YouTube button */}
+          <button
+            onClick={() => setShowImport(true)}
+            className="flex items-center gap-2 px-4 py-2 rounded-full bg-[#141414] border border-[rgba(255,255,255,0.08)] text-[#a1a1aa] hover:text-white hover:border-[#2563eb] text-sm font-medium transition-all"
+          >
+            <Youtube className="w-4 h-4 text-red-500" />
+            Import Playlist
+          </button>
         </div>
-      </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
-        {/* Liked Songs card */}
-        <Link
-          href="/liked"
-          className="relative group aspect-square rounded-2xl overflow-hidden bg-gradient-to-br from-[#4c1d95] to-[#2563eb] shadow-2xl transition-all duration-300 hover:-translate-y-2"
-        >
-          <div className="absolute inset-0 bg-black/20 group-hover:bg-black/10 transition-colors" />
-          <div className="absolute inset-x-6 bottom-6 flex flex-col items-start gap-2">
-             <div className="w-12 h-12 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center mb-2">
-               <Heart className="w-6 h-6 text-white" fill="white" />
-             </div>
-             <h3 className="text-2xl font-black text-white leading-tight">Liked Songs</h3>
-             <p className="text-sm font-medium text-white/80">Your favorite music</p>
-          </div>
-          <div className="absolute right-4 bottom-4 opacity-0 group-hover:opacity-100 transition-all duration-300 translate-y-2 group-hover:translate-y-0">
-             <div className="w-12 h-12 rounded-full bg-[#2563eb] flex items-center justify-center shadow-xl">
-               <Play className="w-5 h-5 text-white ml-1" fill="white" />
-             </div>
-          </div>
-        </Link>
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
+          {/* Liked Songs card */}
+          <Link
+            href="/liked"
+            className="relative group aspect-square rounded-2xl overflow-hidden bg-gradient-to-br from-[#4c1d95] to-[#2563eb] shadow-2xl transition-all duration-300 hover:-translate-y-2"
+          >
+            <div className="absolute inset-0 bg-black/20 group-hover:bg-black/10 transition-colors" />
+            <div className="absolute inset-x-6 bottom-6 flex flex-col items-start gap-2">
+              <div className="w-12 h-12 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center mb-2">
+                <Heart className="w-6 h-6 text-white" fill="white" />
+              </div>
+              <h3 className="text-2xl font-black text-white leading-tight">Liked Songs</h3>
+              <p className="text-sm font-medium text-white/80">Your favorite music</p>
+            </div>
+            <div className="absolute right-4 bottom-4 opacity-0 group-hover:opacity-100 transition-all duration-300 translate-y-2 group-hover:translate-y-0">
+              <div className="w-12 h-12 rounded-full bg-[#2563eb] flex items-center justify-center shadow-xl">
+                <Play className="w-5 h-5 text-white ml-1" fill="white" />
+              </div>
+            </div>
+          </Link>
 
-        {playlists.map((playlist) => {
-          const songCount = playlist.playlist_songs?.[0]?.count || 0;
-          return (
-            <Link
-              key={playlist.id}
-              href={`/playlist/${playlist.id}`}
-              className="group flex flex-col gap-4 p-4 rounded-2xl bg-[#141414] border border-[rgba(255,255,255,0.06)] hover:bg-[#1a1a1a] transition-all duration-300 hover:-translate-y-1 shadow-lg"
-            >
-              <div className="relative aspect-square rounded-xl overflow-hidden shadow-xl bg-[#0a0a0a]">
-                {playlist.cover_image ? (
-                  <img 
-                    src={playlist.cover_image} 
-                    alt={playlist.name} 
-                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" 
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center text-[#27272a]">
-                    <Music className="w-16 h-16 opacity-20" />
-                  </div>
-                )}
-                <div className="absolute right-2 bottom-2 opacity-0 group-hover:opacity-100 transition-all duration-300 translate-y-2 group-hover:translate-y-0 group-hover:scale-105">
-                  <div className="w-10 h-10 rounded-full bg-[#2563eb] flex items-center justify-center shadow-xl">
-                    <Play className="w-4 h-4 text-white ml-0.5" fill="white" />
+          {playlists.map((playlist) => {
+            const songCount = playlist.playlist_songs?.[0]?.count || 0;
+            return (
+              <Link
+                key={playlist.id}
+                href={`/playlist/${playlist.id}`}
+                className="group flex flex-col gap-4 p-4 rounded-2xl bg-[#141414] border border-[rgba(255,255,255,0.06)] hover:bg-[#1a1a1a] transition-all duration-300 hover:-translate-y-1 shadow-lg"
+              >
+                <div className="relative aspect-square rounded-xl overflow-hidden shadow-xl bg-[#0a0a0a]">
+                  {playlist.cover_image ? (
+                    <img src={playlist.cover_image} alt={playlist.name} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-[#27272a]">
+                      <Music className="w-16 h-16 opacity-20" />
+                    </div>
+                  )}
+                  <div className="absolute right-2 bottom-2 opacity-0 group-hover:opacity-100 transition-all duration-300 translate-y-2 group-hover:translate-y-0 group-hover:scale-105">
+                    <div className="w-10 h-10 rounded-full bg-[#2563eb] flex items-center justify-center shadow-xl">
+                      <Play className="w-4 h-4 text-white ml-0.5" fill="white" />
+                    </div>
                   </div>
                 </div>
-              </div>
-              <div className="min-w-0">
-                <h3 className="font-bold text-white truncate group-hover:text-[#2563eb] transition-colors">{playlist.name}</h3>
-                <p className="text-xs text-[#71717a] font-medium mt-1">Playlist • {songCount} songs</p>
-              </div>
-            </Link>
-          );
-        })}
+                <div className="min-w-0">
+                  <h3 className="font-bold text-white truncate group-hover:text-[#2563eb] transition-colors">{playlist.name}</h3>
+                  <p className="text-xs text-[#71717a] font-medium mt-1">Playlist • {songCount} songs</p>
+                </div>
+              </Link>
+            );
+          })}
 
-        {/* Empty state playlists */}
-        {!isLoading && playlists.length === 0 && (
-          <div className="col-span-full py-20 flex flex-col items-center justify-center text-center">
-             <div className="w-20 h-20 rounded-3xl bg-[#141414] border border-dashed border-[#27272a] flex items-center justify-center mb-6">
-               <Plus className="w-8 h-8 text-[#27272a]" />
-             </div>
-             <h3 className="text-xl font-bold text-white mb-2">Create your first playlist</h3>
-             <p className="text-[#71717a] text-sm max-w-xs">It only takes a second. Click the plus button in the sidebar or search for songs!</p>
-          </div>
-        )}
+          {!isLoading && playlists.length === 0 && (
+            <div className="col-span-full py-20 flex flex-col items-center justify-center text-center">
+              <div className="w-20 h-20 rounded-3xl bg-[#141414] border border-dashed border-[#27272a] flex items-center justify-center mb-6">
+                <Plus className="w-8 h-8 text-[#27272a]" />
+              </div>
+              <h3 className="text-xl font-bold text-white mb-2">Create your first playlist</h3>
+              <p className="text-[#71717a] text-sm max-w-xs">It only takes a second. Click the plus button in the sidebar or search for songs!</p>
+            </div>
+          )}
+        </div>
       </div>
-    </div>
+    </>
   );
 }
