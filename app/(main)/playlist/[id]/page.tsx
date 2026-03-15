@@ -306,8 +306,33 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
           </div>
         </div>
 
-        {/* Songs list */}
         <div className="mt-8">
+          {/* Mobile sort dropdown */}
+          <div className="flex md:hidden items-center justify-between mb-4 px-1">
+            <p className="text-sm text-[#52525b]">{songs.length} songs</p>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-[#52525b]">Sort</span>
+              <select
+                value={`${sortField}:${sortDir}`}
+                onChange={e => {
+                  const [f, d] = e.target.value.split(":") as [SortField, SortDir]
+                  setSortField(f)
+                  setSortDir(d)
+                }}
+                className="bg-[#1a1a1a] border border-[rgba(255,255,255,0.08)] text-white text-xs rounded-lg px-3 py-1.5 focus:outline-none focus:border-[#2563eb] cursor-pointer"
+              >
+                <option value="default:asc">Date Added (Oldest)</option>
+                <option value="default:desc">Date Added (Newest)</option>
+                <option value="title:asc">Title (A→Z)</option>
+                <option value="title:desc">Title (Z→A)</option>
+                <option value="artist:asc">Artist (A→Z)</option>
+                <option value="artist:desc">Artist (Z→A)</option>
+                <option value="duration:asc">Duration (Short)</option>
+                <option value="duration:desc">Duration (Long)</option>
+              </select>
+            </div>
+          </div>
+
           {songs.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-20 text-[#52525b]">
               <Music className="w-12 h-12 mb-4 opacity-20" />
@@ -316,16 +341,16 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
             </div>
           ) : (
             <div className="w-full">
-              {/* Column headers with sort */}
-              <div className="flex items-center px-4 py-2 border-b border-[rgba(255,255,255,0.04)] mb-2">
+              {/* Desktop column headers */}
+              <div className="hidden md:flex items-center px-4 py-2 border-b border-[rgba(255,255,255,0.04)] mb-2">
                 <span className="w-8 text-[#52525b] text-[11px] font-bold uppercase tracking-widest">#</span>
                 <div className="flex-1">
                   <SortHeader label="Title" field="title" current={sortField} dir={sortDir} onSort={handleSort} />
                 </div>
-                <div className="w-36 hidden md:block">
+                <div className="w-36">
                   <SortHeader label="Artist" field="artist" current={sortField} dir={sortDir} onSort={handleSort} />
                 </div>
-                <div className="w-24 hidden md:flex justify-center">
+                <div className="w-24 flex justify-center">
                   <SortHeader label="Date added" field="default" current={sortField} dir={sortDir} onSort={handleSort} />
                 </div>
                 <div className="w-20 flex justify-end items-center gap-1">
