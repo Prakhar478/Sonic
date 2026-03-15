@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Sonic</string>
+    <string name="title_activity_main">Sonic</string>
+    <string name="package_name">com.prakhar.sonic</string>
+    <string name="custom_url_scheme">com.prakhar.sonic</string>
+</resources>
