@@ -81,7 +81,7 @@ export default function HomePage() {
   ];
 
   return (
-    <div className="pb-32 pt-6 px-6 max-w-[1400px] mx-auto relative h-full overflow-y-auto custom-scrollbar">
+    <div className="pb-32 px-4 md:px-6 max-w-[1400px] mx-auto relative">
       
       <Suspense fallback={null}>
         <VerifyToast />
