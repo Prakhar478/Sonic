@@ -17,7 +17,6 @@ export default function MainLayout({
   const pathname = usePathname();
   const isHome = pathname === '/';
 
-  // Responsive detection
   useEffect(() => {
     const checkMobile = () => {
       setMobile(window.innerWidth < 768);
@@ -30,16 +29,14 @@ export default function MainLayout({
   return (
     <div className="min-h-screen bg-black">
       <Sidebar />
-
       <main className="md:ml-[256px] pb-[160px] md:pb-[88px] min-h-screen overflow-y-auto">
         <div className={isHome ? 'hidden md:block' : 'block'}>
           <Header />
         </div>
-        <div className={isHome ? 'pt-0' : 'pt-[64px]'}>
+        <div className={isHome ? 'md:pt-[64px]' : 'pt-[64px]'}>
           {children}
         </div>
       </main>
-
       <MobileNav />
       <Player />
     </div>
