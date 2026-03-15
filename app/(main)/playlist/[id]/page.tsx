@@ -185,7 +185,8 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
       case 'title': cmp = a.title.localeCompare(b.title); break
       case 'artist': cmp = a.artist.localeCompare(b.artist); break
       case 'duration': cmp = (a.duration || 0) - (b.duration || 0); break
-      default: cmp = 0
+      // 'default' = date added, which is the original array index order
+      default: cmp = songs.indexOf(a) - songs.indexOf(b); break
     }
     return sortDir === 'asc' ? cmp : -cmp
   })
@@ -321,14 +322,15 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
                 <div className="flex-1">
                   <SortHeader label="Title" field="title" current={sortField} dir={sortDir} onSort={handleSort} />
                 </div>
-                <div className="w-48 hidden md:block">
+                <div className="w-36 hidden md:block">
                   <SortHeader label="Artist" field="artist" current={sortField} dir={sortDir} onSort={handleSort} />
                 </div>
-                <div className="w-20 flex justify-end">
-                  <SortHeader label="" field="duration" current={sortField} dir={sortDir} onSort={handleSort}
-                    className="gap-0.5"
-                  />
-                  <Clock className="w-3.5 h-3.5 text-[#52525b] ml-1" />
+                <div className="w-24 hidden md:flex justify-center">
+                  <SortHeader label="Date added" field="default" current={sortField} dir={sortDir} onSort={handleSort} />
+                </div>
+                <div className="w-20 flex justify-end items-center gap-1">
+                  <SortHeader label="" field="duration" current={sortField} dir={sortDir} onSort={handleSort} className="gap-0.5" />
+                  <Clock className="w-3.5 h-3.5 text-[#52525b]" />
                 </div>
                 <span className="w-12" />
               </div>
