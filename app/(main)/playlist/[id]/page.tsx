@@ -6,7 +6,6 @@ import { usePlayerStore } from '@/stores/player-store'
 import { formatDuration } from '@/lib/utils'
 import { useAuthStore } from '@/stores/auth-store'
 import { useRouter } from 'next/navigation'
-import { useLocalStorage } from '@/hooks/useLocalStorage'
 
 function getPlaylistGradient(name: string): string {
   const gradients = [
@@ -114,8 +113,8 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
   const [songs, setSongs] = useState<any[]>([])
   const [selectedColor, setSelectedColor] = useState<string | null>(null)
   const [showDeleteModal, setShowDeleteModal] = useState(false)
-  const [sortField, setSortField] = useLocalStorage<SortField>('playlist:sortField', 'default')
-  const [sortDir, setSortDir] = useLocalStorage<SortDir>('playlist:sortDir', 'asc')
+  const [sortField, setSortField] = useState<SortField>('default')
+  const [sortDir, setSortDir] = useState<SortDir>('asc')
   const [isLoading, setIsLoading] = useState(true)
   const { playSong } = usePlayerStore()
   const { user } = useAuthStore()
@@ -173,7 +172,7 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
   // Toggle sort: same field flips direction, new field resets to asc
   const handleSort = (field: SortField) => {
     if (field === sortField) {
-      setSortDir(sortDir === 'asc' ? 'desc' : 'asc')
+      setSortDir(d => d === 'asc' ? 'desc' : 'asc')
     } else {
       setSortField(field)
       setSortDir('asc')

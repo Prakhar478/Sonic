@@ -49,7 +49,8 @@ function getShuffledIndex(currentIndex: number, length: number): number {
   return next;
 }
 
-// ─── Media Session ────────────────────────────────────────────────────────────
+// ─── Media Session API ────────────────────────────────────────────────────────
+// Sets lock screen / notification controls on Android Chrome + desktop browsers.
 
 function updateMediaSession(song: Song, isPlaying: boolean) {
   if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return;
@@ -67,42 +68,47 @@ function updateMediaSession(song: Song, isPlaying: boolean) {
   navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
 }
 
-function setupMediaSession() {
+function registerMediaSessionHandlers() {
   if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return;
 
-  // ⚠️ Key fix: every handler calls usePlayerStore.getState() fresh at the
-  // time the notification button is pressed — never captures stale closure state.
+  const store = usePlayerStore.getState;
+
   navigator.mediaSession.setActionHandler('play', () => {
-    usePlayerStore.getState().resume();
+    store().resume();
   });
 
   navigator.mediaSession.setActionHandler('pause', () => {
-    usePlayerStore.getState().pause();
+    store().pause();
   });
 
   navigator.mediaSession.setActionHandler('nexttrack', () => {
-    usePlayerStore.getState().next();
+    store().next();
   });
 
   navigator.mediaSession.setActionHandler('previoustrack', () => {
-    usePlayerStore.getState().prev();
+    store().prev();
   });
 
   navigator.mediaSession.setActionHandler('seekto', (details) => {
-    if (details.seekTime != null) usePlayerStore.getState().seek(details.seekTime);
+    if (details.seekTime != null) store().seek(details.seekTime);
   });
 
   navigator.mediaSession.setActionHandler('seekbackward', (details) => {
-    const { progress } = usePlayerStore.getState();
-    usePlayerStore.getState().seek(Math.max(0, progress - (details.seekOffset ?? 10)));
+    const { progress } = store();
+    store().seek(Math.max(0, progress - (details.seekOffset ?? 10)));
   });
 
   navigator.mediaSession.setActionHandler('seekforward', (details) => {
-    const { progress, duration } = usePlayerStore.getState();
-    usePlayerStore.getState().seek(Math.min(duration, progress + (details.seekOffset ?? 10)));
+    const { progress, duration } = store();
+    store().seek(Math.min(duration, progress + (details.seekOffset ?? 10)));
   });
 }
 
+// Register handlers once on module load
+if (typeof window !== 'undefined') {
+  // Delay slightly to ensure store is initialized
+  setTimeout(registerMediaSessionHandlers, 0);
+}
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const usePlayerStore = create<PlayerStore>((set, get) => ({
@@ -133,14 +139,13 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
       seekTo: undefined,
     });
 
+    // Update lock screen metadata
     updateMediaSession(song, true);
   },
 
   pause: () => {
     set({ isPlaying: false });
-    if (typeof navigator !== 'undefined' && 'mediaSession' in navigator) {
-      navigator.mediaSession.playbackState = 'paused';
-    }
+    if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
   },
 
   resume: () => {
@@ -150,9 +155,9 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
   },
 
   togglePlay: () => {
-    const next = !get().isPlaying;
+    const { isPlaying, currentSong } = get();
+    const next = !isPlaying;
     set({ isPlaying: next });
-    const { currentSong } = get();
     if (currentSong) updateMediaSession(currentSong, next);
   },
 
@@ -169,13 +174,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
       nextIndex = queueIndex + 1;
       if (nextIndex >= queue.length) {
         if (repeat === 'all') nextIndex = 0;
-        else {
-          // End of queue — update media session to paused
-          if (typeof navigator !== 'undefined' && 'mediaSession' in navigator) {
-            navigator.mediaSession.playbackState = 'paused';
-          }
-          return;
-        }
+        else return;
       }
     }
 
@@ -205,14 +204,14 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
 
   setProgress: (progress) => {
     set({ progress });
-    // Update lock screen seek bar
-    const { duration } = get();
-    if (typeof navigator !== 'undefined' && 'mediaSession' in navigator && duration > 0) {
+    // Update media session position state for seek bar on lock screen
+    const { duration, isPlaying } = get();
+    if ('mediaSession' in navigator && duration > 0) {
       try {
         navigator.mediaSession.setPositionState({
           duration,
           playbackRate: 1,
-          position: Math.min(progress, duration),
+          position: progress,
         });
       } catch (_) { }
     }
@@ -223,13 +222,9 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
   seek: (time) => {
     set({ progress: time, seekTo: time });
     const { duration } = get();
-    if (typeof navigator !== 'undefined' && 'mediaSession' in navigator && duration > 0) {
+    if ('mediaSession' in navigator && duration > 0) {
       try {
-        navigator.mediaSession.setPositionState({
-          duration,
-          playbackRate: 1,
-          position: Math.min(time, duration),
-        });
+        navigator.mediaSession.setPositionState({ duration, playbackRate: 1, position: time });
       } catch (_) { }
     }
   },
@@ -253,9 +248,3 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
 
   setQueue: (songs, startIndex = 0) => set({ queue: songs, queueIndex: startIndex }),
 }));
-
-// Register Media Session handlers after store is created
-// Called here so usePlayerStore.getState() is always valid inside handlers
-if (typeof window !== 'undefined') {
-  setupMediaSession();
-}
