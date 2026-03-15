@@ -29,10 +29,14 @@ export default function MainLayout({
   return (
     <div className="min-h-screen bg-black">
       <Sidebar />
-      <main className="md:ml-[256px] pb-[160px] md:pb-[88px] min-h-screen overflow-y-auto">
-        <div className={isHome ? 'hidden md:block' : 'block'}>
-          <Header />
-        </div>
+      {/* suppressHydrationWarning on main because pb-[160px] vs pb-[88px]
+          is set by useUIStore which reads window.innerWidth — only available
+          client-side. Safe to suppress: purely a spacing difference. */}
+      <main
+        className="md:ml-[256px] pb-[160px] md:pb-[88px] min-h-screen overflow-y-auto"
+        suppressHydrationWarning
+      >
+        <Header />
         <div className={isHome ? 'md:pt-[64px]' : 'pt-[64px]'}>
           {children}
         </div>
