@@ -3,7 +3,11 @@
 import { useState, useEffect } from 'react';
 import { useAuthStore } from '@/stores/auth-store';
 import Link from 'next/link';
-import { Library as LibraryIcon, Heart, Plus, LogIn, Music, Play, Youtube, X, Loader2, ListMusic } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import {
+  Library as LibraryIcon, Heart, Plus, LogIn, Music,
+  Play, Youtube, X, Loader2, ListMusic, Check
+} from 'lucide-react';
 import { usePlayerStore } from '@/stores/player-store';
 
 interface Playlist {
@@ -20,31 +24,72 @@ interface ImportedPlaylist {
   songs: any[];
 }
 
-function ImportModal({ onClose, onPlay }: { onClose: () => void; onPlay: (songs: any[], title: string) => void }) {
+function ImportModal({ onClose }: { onClose: (refresh?: boolean) => void }) {
+  const router = useRouter();
+  const { playSong } = usePlayerStore();
   const [url, setUrl] = useState('');
   const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
   const [result, setResult] = useState<ImportedPlaylist | null>(null);
   const [error, setError] = useState('');
 
   const handleImport = async () => {
-    if (!url.trim()) return
-    setLoading(true)
-    setError('')
-    setResult(null)
+    if (!url.trim()) return;
+    setLoading(true);
+    setError('');
+    setResult(null);
+    setSaved(false);
     try {
-      const res = await fetch(`/api/playlist-import?url=${encodeURIComponent(url.trim())}`)
-      const data = await res.json()
+      const res = await fetch(`/api/playlist-import?url=${encodeURIComponent(url.trim())}`);
+      const data = await res.json();
+      if (!res.ok) setError(data.error || 'Failed to import playlist');
+      else setResult(data);
+    } catch {
+      setError('Something went wrong. Check the URL and try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSave = async () => {
+    if (!result) return;
+    setSaving(true);
+    setError('');
+    try {
+      const res = await fetch('/api/playlist-import/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: result.title,
+          thumbnail: result.thumbnail,
+          songs: result.songs,
+        }),
+      });
+      const data = await res.json();
       if (!res.ok) {
-        setError(data.error || 'Failed to import playlist')
+        setError(data.error || 'Failed to save playlist');
       } else {
-        setResult(data)
+        setSaved(true);
+        // Navigate to the new playlist after short delay
+        setTimeout(() => {
+          onClose(true);
+          router.push(`/playlist/${data.playlist.id}`);
+        }, 1200);
       }
     } catch {
-      setError('Something went wrong. Check the URL and try again.')
+      setError('Failed to save playlist. Please try again.');
     } finally {
-      setLoading(false)
+      setSaving(false);
     }
-  }
+  };
+
+  const handlePlay = () => {
+    if (result?.songs.length) {
+      playSong(result.songs[0], result.songs);
+      onClose();
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
@@ -55,7 +100,7 @@ function ImportModal({ onClose, onPlay }: { onClose: () => void; onPlay: (songs:
             <Youtube className="w-5 h-5 text-red-500" />
             <h2 className="text-white font-bold text-[16px]">Import YouTube Playlist</h2>
           </div>
-          <button onClick={onClose} className="text-[#52525b] hover:text-white transition-colors">
+          <button onClick={() => onClose()} className="text-[#52525b] hover:text-white transition-colors">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -68,7 +113,7 @@ function ImportModal({ onClose, onPlay }: { onClose: () => void; onPlay: (songs:
               <input
                 type="text"
                 value={url}
-                onChange={(e) => setUrl(e.target.value)}
+                onChange={(e) => { setUrl(e.target.value); setResult(null); setSaved(false); }}
                 onKeyDown={(e) => e.key === 'Enter' && handleImport()}
                 placeholder="https://youtube.com/playlist?list=..."
                 className="flex-1 bg-[#0d0d0d] border border-[rgba(255,255,255,0.08)] rounded-xl px-4 py-2.5 text-white text-sm placeholder:text-[#52525b] focus:outline-none focus:border-[#2563eb] transition-colors"
@@ -76,12 +121,12 @@ function ImportModal({ onClose, onPlay }: { onClose: () => void; onPlay: (songs:
               <button
                 onClick={handleImport}
                 disabled={loading || !url.trim()}
-                className="px-4 py-2.5 bg-[#2563eb] text-white text-sm font-bold rounded-xl disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[#1d4ed8] transition-colors flex items-center gap-2"
+                className="px-4 py-2.5 bg-[#2563eb] text-white text-sm font-bold rounded-xl disabled:opacity-50 hover:bg-[#1d4ed8] transition-colors flex items-center gap-2 flex-shrink-0"
               >
-                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Import'}
+                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Fetch'}
               </button>
             </div>
-            <p className="text-[#52525b] text-xs mt-2">Paste any YouTube playlist link</p>
+            <p className="text-[#52525b] text-xs mt-2">Paste any public YouTube playlist link</p>
           </div>
 
           {/* Error */}
@@ -93,8 +138,9 @@ function ImportModal({ onClose, onPlay }: { onClose: () => void; onPlay: (songs:
 
           {/* Result */}
           {result && (
-            <div className="bg-[#0d0d0d] border border-[rgba(255,255,255,0.06)] rounded-xl p-4">
-              <div className="flex items-center gap-3 mb-4">
+            <div className="bg-[#0d0d0d] border border-[rgba(255,255,255,0.06)] rounded-xl p-4 space-y-3">
+              {/* Playlist info */}
+              <div className="flex items-center gap-3">
                 {result.thumbnail ? (
                   <img src={result.thumbnail} alt={result.title} className="w-14 h-14 rounded-lg object-cover flex-shrink-0" />
                 ) : (
@@ -107,19 +153,42 @@ function ImportModal({ onClose, onPlay }: { onClose: () => void; onPlay: (songs:
                   <p className="text-[#a1a1aa] text-xs mt-0.5">{result.songCount} songs found</p>
                 </div>
               </div>
-              <button
-                onClick={() => { onPlay(result.songs, result.title); onClose(); }}
-                className="w-full py-2.5 bg-[#2563eb] hover:bg-[#1d4ed8] text-white font-bold text-sm rounded-xl flex items-center justify-center gap-2 transition-colors"
-              >
-                <Play className="w-4 h-4" fill="white" />
-                Play All {result.songCount} Songs
-              </button>
+
+              {/* Action buttons */}
+              <div className="flex gap-2">
+                {/* Play now */}
+                <button
+                  onClick={handlePlay}
+                  className="flex-1 py-2.5 bg-[#1a1a1a] hover:bg-[#222] text-white font-medium text-sm rounded-xl flex items-center justify-center gap-2 transition-colors border border-[rgba(255,255,255,0.06)]"
+                >
+                  <Play className="w-4 h-4" fill="white" />
+                  Play Now
+                </button>
+
+                {/* Save to library */}
+                <button
+                  onClick={handleSave}
+                  disabled={saving || saved}
+                  className={`flex-1 py-2.5 font-bold text-sm rounded-xl flex items-center justify-center gap-2 transition-all ${saved
+                    ? 'bg-green-600 text-white'
+                    : 'bg-[#2563eb] hover:bg-[#1d4ed8] text-white disabled:opacity-70'
+                    }`}
+                >
+                  {saving ? (
+                    <><Loader2 className="w-4 h-4 animate-spin" /> Saving…</>
+                  ) : saved ? (
+                    <><Check className="w-4 h-4" /> Saved!</>
+                  ) : (
+                    <><Plus className="w-4 h-4" /> Save to Library</>
+                  )}
+                </button>
+              </div>
             </div>
           )}
         </div>
       </div>
     </div>
-  )
+  );
 }
 
 export default function LibraryPage() {
@@ -127,7 +196,6 @@ export default function LibraryPage() {
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showImport, setShowImport] = useState(false);
-  const { playSong } = usePlayerStore();
 
   useEffect(() => {
     if (isAuthenticated) fetchPlaylists();
@@ -146,10 +214,9 @@ export default function LibraryPage() {
     }
   };
 
-  const handlePlayImported = (songs: any[], title: string) => {
-    if (songs.length > 0) {
-      playSong(songs[0], songs);
-    }
+  const handleModalClose = (refresh?: boolean) => {
+    setShowImport(false);
+    if (refresh) fetchPlaylists();
   };
 
   if (!isAuthenticated) {
@@ -173,12 +240,7 @@ export default function LibraryPage() {
 
   return (
     <>
-      {showImport && (
-        <ImportModal
-          onClose={() => setShowImport(false)}
-          onPlay={handlePlayImported}
-        />
-      )}
+      {showImport && <ImportModal onClose={handleModalClose} />}
 
       <div className="px-6 pt-6 pb-32 overflow-y-auto space-y-8 animate-fade-in">
         <div className="flex items-center justify-between">
@@ -186,7 +248,6 @@ export default function LibraryPage() {
             <LibraryIcon className="w-8 h-8 text-[#2563eb]" />
             <h1 className="text-3xl font-black text-white tracking-tight">Your Library</h1>
           </div>
-          {/* Import from YouTube button */}
           <button
             onClick={() => setShowImport(true)}
             className="flex items-center gap-2 px-4 py-2 rounded-full bg-[#141414] border border-[rgba(255,255,255,0.08)] text-[#a1a1aa] hover:text-white hover:border-[#2563eb] text-sm font-medium transition-all"
@@ -197,7 +258,7 @@ export default function LibraryPage() {
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
-          {/* Liked Songs card */}
+          {/* Liked Songs */}
           <Link
             href="/liked"
             className="relative group aspect-square rounded-2xl overflow-hidden bg-gradient-to-br from-[#4c1d95] to-[#2563eb] shadow-2xl transition-all duration-300 hover:-translate-y-2"
@@ -229,11 +290,11 @@ export default function LibraryPage() {
                   {playlist.cover_image ? (
                     <img src={playlist.cover_image} alt={playlist.name} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" />
                   ) : (
-                    <div className="w-full h-full flex items-center justify-center text-[#27272a]">
-                      <Music className="w-16 h-16 opacity-20" />
+                    <div className="w-full h-full flex items-center justify-center">
+                      <Music className="w-16 h-16 opacity-20 text-[#27272a]" />
                     </div>
                   )}
-                  <div className="absolute right-2 bottom-2 opacity-0 group-hover:opacity-100 transition-all duration-300 translate-y-2 group-hover:translate-y-0 group-hover:scale-105">
+                  <div className="absolute right-2 bottom-2 opacity-0 group-hover:opacity-100 transition-all duration-300 translate-y-2 group-hover:translate-y-0">
                     <div className="w-10 h-10 rounded-full bg-[#2563eb] flex items-center justify-center shadow-xl">
                       <Play className="w-4 h-4 text-white ml-0.5" fill="white" />
                     </div>
@@ -253,7 +314,7 @@ export default function LibraryPage() {
                 <Plus className="w-8 h-8 text-[#27272a]" />
               </div>
               <h3 className="text-xl font-bold text-white mb-2">Create your first playlist</h3>
-              <p className="text-[#71717a] text-sm max-w-xs">It only takes a second. Click the plus button in the sidebar or search for songs!</p>
+              <p className="text-[#71717a] text-sm max-w-xs">Click the plus button in the sidebar or import a YouTube playlist above!</p>
             </div>
           )}
         </div>
