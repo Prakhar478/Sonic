@@ -3,6 +3,8 @@ import { useEffect, useRef } from 'react'
 
 interface Props {
   videoId: string
+  title: string
+  artist: string
   isPlaying: boolean
   volume: number
   onReady: (duration: number) => void
@@ -12,134 +14,71 @@ interface Props {
   seekTo?: number
 }
 
-declare global {
-  interface Window {
-    YT: any
-    onYouTubeIframeAPIReady: () => void
-  }
-}
-
 export function YouTubePlayer({
-  videoId, isPlaying, volume,
+  videoId, title, artist, isPlaying, volume,
   onReady, onProgress, onEnded, onError, seekTo
 }: Props) {
-  const playerRef = useRef<any>(null)
-  const containerRef = useRef<HTMLDivElement>(null)
+  const audioRef = useRef<HTMLAudioElement>(null)
   const intervalRef = useRef<NodeJS.Timeout | null>(null)
-  const readyRef = useRef(false)
+  const loadedVideoId = useRef<string>('')
 
-  // Load YouTube IFrame API script once
+  // Fetch stream URL from JioSaavn and load into audio
   useEffect(() => {
-    if (!document.getElementById('yt-iframe-api')) {
-      const tag = document.createElement('script')
-      tag.id = 'yt-iframe-api'
-      tag.src = 'https://www.youtube.com/iframe_api'
-      document.head.appendChild(tag)
-    }
-  }, [])
-
-  // Create player when videoId changes
-  useEffect(() => {
-    // Don't initialize if videoId is empty or invalid
     if (!videoId || videoId.length !== 11) return
+    if (loadedVideoId.current === videoId) return
+    loadedVideoId.current = videoId
 
-    readyRef.current = false
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current)
-      intervalRef.current = null
-    }
+    const fetchStream = async () => {
+      try {
+        const params = new URLSearchParams({ title, artist })
+        const res = await fetch(`/api/stream/${videoId}?${params}`)
+        if (!res.ok) { onError(); return }
+        const data = await res.json()
+        if (!data.streamUrl) { onError(); return }
 
-    const create = () => {
-      if (!containerRef.current || !window.YT?.Player) return
-
-      if (playerRef.current) {
-        playerRef.current.destroy()
+        const audio = audioRef.current
+        if (!audio) return
+        audio.src = data.streamUrl
+        audio.volume = volume
+        audio.load()
+      } catch {
+        onError()
       }
-
-      playerRef.current = new window.YT.Player(containerRef.current, {
-        videoId,
-        playerVars: {
-          autoplay: 1,
-          controls: 0,
-          disablekb: 1,
-          fs: 0,
-          iv_load_policy: 3,
-          modestbranding: 1,
-          rel: 0,
-          playsinline: 1,
-        },
-        events: {
-          onReady: (e: any) => {
-            readyRef.current = true
-            e.target.setVolume(volume * 100)
-            onReady(e.target.getDuration())
-            if (isPlaying) e.target.playVideo()
-          },
-          onStateChange: (e: any) => {
-            const YT = window.YT.PlayerState
-            if (e.data === YT.PLAYING) {
-              if (intervalRef.current) clearInterval(intervalRef.current)
-              intervalRef.current = setInterval(() => {
-                onProgress(playerRef.current?.getCurrentTime?.() || 0)
-              }, 500)
-            } else {
-              if (intervalRef.current) {
-                clearInterval(intervalRef.current)
-                intervalRef.current = null
-              }
-            }
-            if (e.data === YT.ENDED) onEnded()
-          },
-          onError: () => onError(),
-        },
-      })
     }
 
-    if (window.YT?.Player) {
-      create()
-    } else {
-      window.onYouTubeIframeAPIReady = create
-    }
+    fetchStream()
+  }, [videoId, title, artist])
 
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current)
-    }
-  }, [videoId])
-
-  // Sync play/pause
+  // Play / pause
   useEffect(() => {
-    if (!readyRef.current || !playerRef.current) return
-    isPlaying
-      ? playerRef.current.playVideo()
-      : playerRef.current.pauseVideo()
+    const audio = audioRef.current
+    if (!audio) return
+    if (isPlaying) {
+      audio.play().catch(() => { })
+    } else {
+      audio.pause()
+    }
   }, [isPlaying])
 
-  // Sync volume
+  // Volume
   useEffect(() => {
-    playerRef.current?.setVolume?.(volume * 100)
+    if (audioRef.current) audioRef.current.volume = volume
   }, [volume])
 
   // Seek
   useEffect(() => {
-    if (seekTo !== undefined && readyRef.current) {
-      playerRef.current?.seekTo?.(seekTo, true)
+    if (seekTo !== undefined && audioRef.current) {
+      audioRef.current.currentTime = seekTo
     }
   }, [seekTo])
 
-  // Hidden — audio only, 1x1 pixel off screen
   return (
-    <div
-      style={{
-        position: 'fixed',
-        left: '-9999px',
-        bottom: '-9999px',
-        width: '1px',
-        height: '1px',
-        opacity: 0,
-        pointerEvents: 'none',
-      }}
-    >
-      <div ref={containerRef} />
-    </div>
+    <audio
+      ref={audioRef}
+      onLoadedMetadata={() => onReady(audioRef.current?.duration || 0)}
+      onTimeUpdate={() => onProgress(audioRef.current?.currentTime || 0)}
+      onEnded={onEnded}
+      onError={onError}
+    />
   )
 }

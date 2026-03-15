@@ -267,6 +267,8 @@ export function Player() {
     <>
       <YouTubePlayer
         videoId={currentSong.videoId}
+        title={currentSong.title}
+        artist={currentSong.artist}
         isPlaying={isPlaying}
         volume={volume}
         seekTo={seekTo}
